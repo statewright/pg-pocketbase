@@ -1,0 +1,398 @@
+--- /tmp/pb_upstream/tools/search/filter.go	2026-05-01 11:49:39
++++ pocketbase/tools/search/filter.go	2026-04-24 06:53:48
+@@ -9,7 +9,6 @@
+ 
+ 	"github.com/ganigeorgiev/fexpr"
+ 	"github.com/pocketbase/dbx"
+-	"github.com/pocketbase/pocketbase/tools/security"
+ 	"github.com/pocketbase/pocketbase/tools/store"
+ 	"github.com/spf13/cast"
+ )
+@@ -164,249 +163,6 @@
+ 	}
+ 
+ 	return buildResolversExpr(lResult, expr.Op, rResult)
+-}
+-
+-func buildResolversExpr(
+-	left *ResolverResult,
+-	op fexpr.SignOp,
+-	right *ResolverResult,
+-) (dbx.Expression, error) {
+-	var expr dbx.Expression
+-
+-	switch op {
+-	case fexpr.SignEq, fexpr.SignAnyEq:
+-		expr = resolveEqualExpr(true, left, right)
+-	case fexpr.SignNeq, fexpr.SignAnyNeq:
+-		expr = resolveEqualExpr(false, left, right)
+-	case fexpr.SignLike, fexpr.SignAnyLike:
+-		// the right side is a column and therefor wrap it with "%" for contains like behavior
+-		if len(right.Params) == 0 {
+-			expr = dbx.NewExp(fmt.Sprintf("%s LIKE ('%%' || %s || '%%') ESCAPE '\\'", left.Identifier, right.Identifier), left.Params)
+-		} else {
+-			expr = dbx.NewExp(fmt.Sprintf("%s LIKE %s ESCAPE '\\'", left.Identifier, right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
+-		}
+-	case fexpr.SignNlike, fexpr.SignAnyNlike:
+-		// the right side is a column and therefor wrap it with "%" for not-contains like behavior
+-		if len(right.Params) == 0 {
+-			expr = dbx.NewExp(fmt.Sprintf("%s NOT LIKE ('%%' || %s || '%%') ESCAPE '\\'", left.Identifier, right.Identifier), left.Params)
+-		} else {
+-			expr = dbx.NewExp(fmt.Sprintf("%s NOT LIKE %s ESCAPE '\\'", left.Identifier, right.Identifier), mergeParams(left.Params, wrapLikeParams(right.Params)))
+-		}
+-	case fexpr.SignLt, fexpr.SignAnyLt:
+-		expr = dbx.NewExp(fmt.Sprintf("%s < %s", left.Identifier, right.Identifier), mergeParams(left.Params, right.Params))
+-	case fexpr.SignLte, fexpr.SignAnyLte:
+-		expr = dbx.NewExp(fmt.Sprintf("%s <= %s", left.Identifier, right.Identifier), mergeParams(left.Params, right.Params))
+-	case fexpr.SignGt, fexpr.SignAnyGt:
+-		expr = dbx.NewExp(fmt.Sprintf("%s > %s", left.Identifier, right.Identifier), mergeParams(left.Params, right.Params))
+-	case fexpr.SignGte, fexpr.SignAnyGte:
+-		expr = dbx.NewExp(fmt.Sprintf("%s >= %s", left.Identifier, right.Identifier), mergeParams(left.Params, right.Params))
+-	}
+-
+-	if expr == nil {
+-		return nil, fmt.Errorf("unknown expression operator %q", op)
+-	}
+-
+-	// multi-match expressions
+-	if !isAnyMatchOp(op) {
+-		if left.MultiMatchSubQuery != nil && right.MultiMatchSubQuery != nil {
+-			mm := &manyVsManyExpr{
+-				left:  left,
+-				right: right,
+-				op:    op,
+-			}
+-
+-			expr = dbx.Enclose(dbx.And(expr, mm))
+-		} else if left.MultiMatchSubQuery != nil {
+-			mm := &manyVsOneExpr{
+-				nullFallback: left.NullFallback,
+-				subQuery:     left.MultiMatchSubQuery,
+-				op:           op,
+-				otherOperand: right,
+-			}
+-
+-			expr = dbx.Enclose(dbx.And(expr, mm))
+-		} else if right.MultiMatchSubQuery != nil {
+-			mm := &manyVsOneExpr{
+-				nullFallback: right.NullFallback,
+-				subQuery:     right.MultiMatchSubQuery,
+-				op:           op,
+-				otherOperand: left,
+-				inverse:      true,
+-			}
+-
+-			expr = dbx.Enclose(dbx.And(expr, mm))
+-		}
+-	}
+-
+-	if left.AfterBuild != nil {
+-		expr = left.AfterBuild(expr)
+-	}
+-
+-	if right.AfterBuild != nil {
+-		expr = right.AfterBuild(expr)
+-	}
+-
+-	return expr, nil
+-}
+-
+-var normalizedIdentifiers = map[string]string{
+-	// if `null` field is missing, treat `null` identifier as NULL token
+-	"null": "NULL",
+-	// if `true` field is missing, treat `true` identifier as TRUE token
+-	"true": "1",
+-	// if `false` field is missing, treat `false` identifier as FALSE token
+-	"false": "0",
+-}
+-
+-func resolveToken(token fexpr.Token, fieldResolver FieldResolver) (*ResolverResult, error) {
+-	switch token.Type {
+-	case fexpr.TokenIdentifier:
+-		// check for macros
+-		// ---
+-		if macroFunc, ok := identifierMacros[token.Literal]; ok {
+-			placeholder := "t" + security.PseudorandomString(8)
+-
+-			macroValue, err := macroFunc()
+-			if err != nil {
+-				return nil, err
+-			}
+-
+-			return &ResolverResult{
+-				Identifier: "{:" + placeholder + "}",
+-				Params:     dbx.Params{placeholder: macroValue},
+-			}, nil
+-		}
+-
+-		// custom resolver
+-		// ---
+-		result, err := fieldResolver.Resolve(token.Literal)
+-		if err != nil || result.Identifier == "" {
+-			for k, v := range normalizedIdentifiers {
+-				if strings.EqualFold(k, token.Literal) {
+-					return &ResolverResult{Identifier: v}, nil
+-				}
+-			}
+-			return nil, err
+-		}
+-
+-		return result, err
+-	case fexpr.TokenText:
+-		placeholder := "t" + security.PseudorandomString(8)
+-
+-		return &ResolverResult{
+-			Identifier: "{:" + placeholder + "}",
+-			Params:     dbx.Params{placeholder: token.Literal},
+-		}, nil
+-	case fexpr.TokenNumber:
+-		placeholder := "t" + security.PseudorandomString(8)
+-
+-		return &ResolverResult{
+-			Identifier: "{:" + placeholder + "}",
+-			Params:     dbx.Params{placeholder: cast.ToFloat64(token.Literal)},
+-		}, nil
+-	case fexpr.TokenFunction:
+-		fn, ok := TokenFunctions[token.Literal]
+-		if !ok {
+-			return nil, fmt.Errorf("unknown function %q", token.Literal)
+-		}
+-
+-		args, _ := token.Meta.([]fexpr.Token)
+-		return fn(func(argToken fexpr.Token) (*ResolverResult, error) {
+-			return resolveToken(argToken, fieldResolver)
+-		}, args...)
+-	}
+-
+-	return nil, fmt.Errorf("unsupported token type %q", token.Type)
+-}
+-
+-// Resolves = and != expressions in an attempt to minimize the COALESCE
+-// usage and to gracefully handle null vs empty string normalizations.
+-//
+-// The expression `a = "" OR a is null` tends to perform better than
+-// `COALESCE(a, "") = ""` since the direct match can be accomplished
+-// with a seek while the COALESCE will induce a table scan.
+-func resolveEqualExpr(equal bool, left, right *ResolverResult) dbx.Expression {
+-	equalOp := "="
+-	nullEqualOp := "IS"
+-	concatOp := "OR"
+-	nullExpr := "IS NULL"
+-	if !equal {
+-		// always use `IS NOT` instead of `!=` because direct non-equal comparisons
+-		// to nullable column values that are actually NULL yields to NULL instead of TRUE, eg.:
+-		// `'example' != nullableColumn` -> NULL even if nullableColumn row value is NULL
+-		equalOp = "IS NOT"
+-		nullEqualOp = equalOp
+-		concatOp = "AND"
+-		nullExpr = "IS NOT NULL"
+-	}
+-
+-	// no coalesce fallback (eg. compare to a json field)
+-	// a IS b
+-	// a IS NOT b
+-	if left.NullFallback == NullFallbackDisabled ||
+-		right.NullFallback == NullFallbackDisabled {
+-		return dbx.NewExp(
+-			fmt.Sprintf("%s %s %s", left.Identifier, nullEqualOp, right.Identifier),
+-			mergeParams(left.Params, right.Params),
+-		)
+-	}
+-
+-	isLeftEmpty := isEmptyIdentifier(left) ||
+-		(left.NullFallback == NullFallbackAuto && len(left.Params) == 1 && hasEmptyParamValue(left))
+-
+-	isRightEmpty := isEmptyIdentifier(right) ||
+-		(right.NullFallback == NullFallbackAuto && len(right.Params) == 1 && hasEmptyParamValue(right))
+-
+-	// both operands are empty
+-	if isLeftEmpty && isRightEmpty {
+-		return dbx.NewExp(fmt.Sprintf("'' %s ''", equalOp), mergeParams(left.Params, right.Params))
+-	}
+-
+-	// direct compare since at least one of the operands is known to be non-empty
+-	// eg. a = 'example'
+-	if isKnownNonEmptyIdentifier(left) || isKnownNonEmptyIdentifier(right) {
+-		leftIdentifier := left.Identifier
+-		if isLeftEmpty {
+-			leftIdentifier = "''"
+-		}
+-		rightIdentifier := right.Identifier
+-		if isRightEmpty {
+-			rightIdentifier = "''"
+-		}
+-		return dbx.NewExp(
+-			fmt.Sprintf("%s %s %s", leftIdentifier, equalOp, rightIdentifier),
+-			mergeParams(left.Params, right.Params),
+-		)
+-	}
+-
+-	// "" = b OR b IS NULL
+-	// "" IS NOT b AND b IS NOT NULL
+-	if isLeftEmpty {
+-		return dbx.NewExp(
+-			fmt.Sprintf("('' %s %s %s %s %s)", equalOp, right.Identifier, concatOp, right.Identifier, nullExpr),
+-			mergeParams(left.Params, right.Params),
+-		)
+-	}
+-
+-	// a = "" OR a IS NULL
+-	// a IS NOT "" AND a IS NOT NULL
+-	if isRightEmpty {
+-		return dbx.NewExp(
+-			fmt.Sprintf("(%s %s '' %s %s %s)", left.Identifier, equalOp, concatOp, left.Identifier, nullExpr),
+-			mergeParams(left.Params, right.Params),
+-		)
+-	}
+-
+-	// fallback to a COALESCE comparison
+-	return dbx.NewExp(
+-		fmt.Sprintf(
+-			"COALESCE(%s, '') %s COALESCE(%s, '')",
+-			left.Identifier,
+-			equalOp,
+-			right.Identifier,
+-		),
+-		mergeParams(left.Params, right.Params),
+-	)
+ }
+ 
+ func hasEmptyParamValue(result *ResolverResult) bool {
+@@ -424,19 +180,6 @@
+ 	return false
+ }
+ 
+-func isKnownNonEmptyIdentifier(result *ResolverResult) bool {
+-	if result.NullFallback == NullFallbackEnforced {
+-		return false
+-	}
+-
+-	switch strings.ToLower(result.Identifier) {
+-	case "1", "0", "false", `true`:
+-		return true
+-	}
+-
+-	return len(result.Params) > 0 && !hasEmptyParamValue(result) && !isEmptyIdentifier(result)
+-}
+-
+ func isEmptyIdentifier(result *ResolverResult) bool {
+ 	switch strings.ToLower(result.Identifier) {
+ 	case "", "null", "''", `""`, "``":
+@@ -610,117 +353,4 @@
+ 	}
+ 
+ 	return "(" + strings.Join(stringParts, e.separator) + ")"
+-}
+-
+-// -------------------------------------------------------------------
+-
+-var _ dbx.Expression = (*manyVsManyExpr)(nil)
+-
+-// manyVsManyExpr constructs a multi-match many<->many db where expression.
+-//
+-// Expects leftSubQuery and rightSubQuery to return a subquery with a
+-// single "multiMatchValue" column.
+-type manyVsManyExpr struct {
+-	left  *ResolverResult
+-	right *ResolverResult
+-	op    fexpr.SignOp
+-}
+-
+-// Build converts the expression into a SQL fragment.
+-//
+-// Implements [dbx.Expression] interface.
+-func (e *manyVsManyExpr) Build(db *dbx.DB, params dbx.Params) string {
+-	if e.left.MultiMatchSubQuery == nil || e.right.MultiMatchSubQuery == nil {
+-		return "0=1"
+-	}
+-
+-	lAlias := "__ml" + security.PseudorandomString(8)
+-	rAlias := "__mr" + security.PseudorandomString(8)
+-
+-	whereExpr, buildErr := buildResolversExpr(
+-		&ResolverResult{
+-			NullFallback: e.left.NullFallback,
+-			Identifier:   "[[" + lAlias + ".multiMatchValue]]",
+-		},
+-		e.op,
+-		&ResolverResult{
+-			NullFallback: e.right.NullFallback,
+-			Identifier:   "[[" + rAlias + ".multiMatchValue]]",
+-			// note: the AfterBuild needs to be handled only once and it
+-			// doesn't matter whether it is applied on the left or right subquery operand
+-			AfterBuild: dbx.Not, // inverse for the not-exist expression
+-		},
+-	)
+-
+-	if buildErr != nil {
+-		return "0=1"
+-	}
+-
+-	return fmt.Sprintf(
+-		"NOT EXISTS (SELECT 1 FROM (%s) {{%s}} LEFT JOIN (%s) {{%s}} WHERE %s)",
+-		e.left.MultiMatchSubQuery.Build(db, params),
+-		lAlias,
+-		e.right.MultiMatchSubQuery.Build(db, params),
+-		rAlias,
+-		whereExpr.Build(db, params),
+-	)
+ }
+-
+-// -------------------------------------------------------------------
+-
+-var _ dbx.Expression = (*manyVsOneExpr)(nil)
+-
+-// manyVsOneExpr constructs a multi-match many<->one db where expression.
+-//
+-// Expects subQuery to return a subquery with a single "multiMatchValue" column.
+-//
+-// You can set inverse=false to reverse the condition sides (aka. one<->many).
+-type manyVsOneExpr struct {
+-	otherOperand *ResolverResult
+-	subQuery     dbx.Expression
+-	op           fexpr.SignOp
+-	inverse      bool
+-	nullFallback NullFallbackPreference
+-}
+-
+-// Build converts the expression into a SQL fragment.
+-//
+-// Implements [dbx.Expression] interface.
+-func (e *manyVsOneExpr) Build(db *dbx.DB, params dbx.Params) string {
+-	if e.subQuery == nil {
+-		return "0=1"
+-	}
+-
+-	alias := "__sm" + security.PseudorandomString(8)
+-
+-	r1 := &ResolverResult{
+-		NullFallback: e.nullFallback,
+-		Identifier:   "[[" + alias + ".multiMatchValue]]",
+-		AfterBuild:   dbx.Not, // inverse for the not-exist expression
+-	}
+-
+-	r2 := &ResolverResult{
+-		Identifier: e.otherOperand.Identifier,
+-		Params:     e.otherOperand.Params,
+-	}
+-
+-	var whereExpr dbx.Expression
+-	var buildErr error
+-
+-	if e.inverse {
+-		whereExpr, buildErr = buildResolversExpr(r2, e.op, r1)
+-	} else {
+-		whereExpr, buildErr = buildResolversExpr(r1, e.op, r2)
+-	}
+-
+-	if buildErr != nil {
+-		return "0=1"
+-	}
+-
+-	return fmt.Sprintf(
+-		"NOT EXISTS (SELECT 1 FROM (%s) {{%s}} WHERE %s)",
+-		e.subQuery.Build(db, params),
+-		alias,
+-		whereExpr.Build(db, params),
+-	)
+-}

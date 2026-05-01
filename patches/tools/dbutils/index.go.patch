@@ -1,0 +1,39 @@
+--- /tmp/pb_upstream/tools/dbutils/index.go	2026-05-01 11:49:39
++++ pocketbase/tools/dbutils/index.go	2026-04-24 06:55:24
+@@ -58,18 +58,18 @@
+ 	}
+ 
+ 	if idx.SchemaName != "" {
+-		str.WriteString("`")
++		str.WriteString(indexIdentQuote)
+ 		str.WriteString(idx.SchemaName)
+-		str.WriteString("`.")
++		str.WriteString(indexIdentQuote + ".")
+ 	}
+ 
+-	str.WriteString("`")
++	str.WriteString(indexIdentQuote)
+ 	str.WriteString(idx.IndexName)
+-	str.WriteString("` ")
++	str.WriteString(indexIdentQuote + " ")
+ 
+-	str.WriteString("ON `")
++	str.WriteString("ON " + indexIdentQuote)
+ 	str.WriteString(idx.TableName)
+-	str.WriteString("` (")
++	str.WriteString(indexIdentQuote + " (")
+ 
+ 	if len(idx.Columns) > 1 {
+ 		str.WriteString("\n  ")
+@@ -91,9 +91,9 @@
+ 			str.WriteString(trimmedColName)
+ 		} else {
+ 			// regular identifier
+-			str.WriteString("`")
++			str.WriteString(indexIdentQuote)
+ 			str.WriteString(trimmedColName)
+-			str.WriteString("`")
++			str.WriteString(indexIdentQuote)
+ 		}
+ 
+ 		if col.Collate != "" {

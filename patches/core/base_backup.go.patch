@@ -1,0 +1,15 @@
+--- /tmp/pb_upstream/core/base_backup.go	2026-05-01 11:49:39
++++ pocketbase/core/base_backup.go	2026-04-30 02:05:30
+@@ -76,10 +76,8 @@
+ 		tempPath := filepath.Join(localTempDir, "pb_backup_"+security.PseudorandomString(6))
+ 		createErr := e.App.RunInTransaction(func(txApp App) error {
+ 			return txApp.AuxRunInTransaction(func(txApp App) error {
+-				// run manual checkpoint and truncate the WAL files
+-				// (errors are ignored because it is not that important and the PRAGMA may not be supported by the used driver)
+-				txApp.DB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
+-				txApp.AuxDB().NewQuery("PRAGMA wal_checkpoint(TRUNCATE)").Execute()
++				// run manual checkpoint and truncate the WAL files (SQLite only, no-op on PG)
++				preBackupCheckpoint(txApp)
+ 
+ 				return archive.Create(txApp.DataDir(), tempPath, e.Exclude...)
+ 			})

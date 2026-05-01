@@ -1,0 +1,11 @@
+--- /tmp/pb_upstream/core/log_query.go	2026-05-01 11:49:39
++++ pocketbase/core/log_query.go	2026-04-30 02:05:47
+@@ -39,7 +39,7 @@
+ 	result := []*LogsStatsItem{}
+ 
+ 	query := app.LogQuery().
+-		Select("count(id) as total", "strftime('%Y-%m-%d %H:00:00', created) as date").
++		Select("count(id) as total", logsStatsDateExpr+" as date").
+ 		GroupBy("date")
+ 
+ 	if expr != nil {

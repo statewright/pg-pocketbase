@@ -1,0 +1,14 @@
+--- /tmp/pb_upstream/tools/search/sort.go	2026-05-01 11:49:39
++++ pocketbase/tools/search/sort.go	2026-04-30 02:06:02
+@@ -29,9 +29,9 @@
+ 		return "RANDOM()", nil
+ 	}
+ 
+-	// special case for the builtin SQLite rowid column
++	// special case for the builtin rowid/ctid column
+ 	if s.Name == rowidSortKey {
+-		return fmt.Sprintf("[[_rowid_]] %s", s.Direction), nil
++		return fmt.Sprintf("%s %s", rowidSortExpr, s.Direction), nil
+ 	}
+ 
+ 	result, err := fieldResolver.Resolve(s.Name)

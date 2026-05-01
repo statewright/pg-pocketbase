@@ -1,0 +1,13 @@
+--- /tmp/pb_upstream/core/migrations_runner.go	2026-05-01 11:49:39
++++ pocketbase/core/migrations_runner.go	2026-04-29 06:26:06
+@@ -249,8 +249,9 @@
+ 	}
+ 
+ 	rawQuery := fmt.Sprintf(
+-		"CREATE TABLE IF NOT EXISTS {{%s}} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied INTEGER NOT NULL)",
++		"CREATE TABLE IF NOT EXISTS {{%s}} (file VARCHAR(255) PRIMARY KEY NOT NULL, applied %s NOT NULL)",
+ 		r.tableName,
++		migrationsAppliedColumnType,
+ 	)
+ 
+ 	_, err := r.app.DB().NewQuery(rawQuery).Execute()

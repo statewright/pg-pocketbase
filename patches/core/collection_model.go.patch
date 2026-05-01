@@ -1,0 +1,49 @@
+--- /tmp/pb_upstream/core/collection_model.go	2026-05-01 11:49:39
++++ pocketbase/core/collection_model.go	2026-04-29 18:16:04
+@@ -653,12 +653,15 @@
+ 	if unique {
+ 		idx.WriteString("UNIQUE ")
+ 	}
+-	idx.WriteString("INDEX `")
++	idx.WriteString("INDEX ")
++	idx.WriteString(identQuote)
+ 	idx.WriteString(name)
+-	idx.WriteString("` ")
+-	idx.WriteString("ON `")
++	idx.WriteString(identQuote)
++	idx.WriteString(" ON ")
++	idx.WriteString(identQuote)
+ 	idx.WriteString(m.Name)
+-	idx.WriteString("` (")
++	idx.WriteString(identQuote)
++	idx.WriteString(" (")
+ 	idx.WriteString(columnsExpr)
+ 	idx.WriteString(")")
+ 	if optWhereExpr != "" {
+@@ -998,10 +1001,11 @@
+ 	// ensure that there is a unique index for the field
+ 	if _, ok := dbutils.FindSingleColumnUniqueIndex(c.Indexes, FieldNameTokenKey); !ok {
+ 		c.Indexes = append(c.Indexes, fmt.Sprintf(
+-			"CREATE UNIQUE INDEX `%s` ON `%s` (`%s`)",
++			"CREATE UNIQUE INDEX %[4]s%[1]s%[4]s ON %[4]s%[2]s%[4]s (%[4]s%[3]s%[4]s)",
+ 			c.fieldIndexName(FieldNameTokenKey),
+ 			c.Name,
+ 			FieldNameTokenKey,
++			identQuote,
+ 		))
+ 	}
+ }
+@@ -1024,11 +1028,12 @@
+ 	// ensure that there is a unique index for the email field
+ 	if _, ok := dbutils.FindSingleColumnUniqueIndex(c.Indexes, FieldNameEmail); !ok {
+ 		c.Indexes = append(c.Indexes, fmt.Sprintf(
+-			"CREATE UNIQUE INDEX `%s` ON `%s` (`%s`) WHERE `%s` != ''",
++			"CREATE UNIQUE INDEX %[5]s%[1]s%[5]s ON %[5]s%[2]s%[5]s (%[5]s%[3]s%[5]s) WHERE %[5]s%[4]s%[5]s != ''",
+ 			c.fieldIndexName(FieldNameEmail),
+ 			c.Name,
+ 			FieldNameEmail,
+ 			FieldNameEmail,
++			identQuote,
+ 		))
+ 	}
+ }

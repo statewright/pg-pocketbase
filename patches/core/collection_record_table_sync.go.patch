@@ -1,0 +1,42 @@
+--- /tmp/pb_upstream/core/collection_record_table_sync.go	2026-05-01 11:49:39
++++ pocketbase/core/collection_record_table_sync.go	2026-04-29 18:12:08
+@@ -2,7 +2,6 @@
+ 
+ import (
+ 	"fmt"
+-	"log/slog"
+ 	"strconv"
+ 	"strings"
+ 
+@@ -142,12 +141,7 @@
+ 		return txErr
+ 	}
+ 
+-	// run optimize per the SQLite recommendations
+-	// (https://www.sqlite.org/pragma.html#pragma_optimize)
+-	_, optimizeErr := app.NonconcurrentDB().NewQuery("PRAGMA optimize").Execute()
+-	if optimizeErr != nil {
+-		app.Logger().Warn("Failed to run PRAGMA optimize after record table sync", slog.String("error", optimizeErr.Error()))
+-	}
++	postSyncOptimize(app)
+ 
+ 	return nil
+ }
+@@ -182,16 +176,7 @@
+ 			// -------------------------------------------------------
+ 
+ 			// temporary drop all views to prevent reference errors during the columns renaming
+-			// (this is used as an "alternative" to the writable_schema PRAGMA)
+-			views := []struct {
+-				Name string `db:"name"`
+-				SQL  string `db:"sql"`
+-			}{}
+-			err := txApp.DB().Select("name", "sql").
+-				From("sqlite_master").
+-				AndWhere(dbx.NewExp("sql is not null")).
+-				AndWhere(dbx.HashExp{"type": "view"}).
+-				All(&views)
++			views, err := listAllViews(txApp)
+ 			if err != nil {
+ 				return err
+ 			}

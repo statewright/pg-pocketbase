@@ -1,0 +1,11 @@
+--- /tmp/pb_upstream/core/collection_query.go	2026-05-01 11:49:39
++++ pocketbase/core/collection_query.go	2026-04-29 18:13:15
+@@ -38,7 +38,7 @@
+ 		q.AndWhere(dbx.In("type", list.ToInterfaceSlice(types)...))
+ 	}
+ 
+-	err := q.OrderBy("rowid ASC").All(&collections)
++	err := q.OrderBy(defaultCollectionsSortExpr).All(&collections)
+ 	if err != nil {
+ 		return nil, err
+ 	}

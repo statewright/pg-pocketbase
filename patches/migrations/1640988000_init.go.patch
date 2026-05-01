@@ -1,0 +1,47 @@
+--- /tmp/pb_upstream/migrations/1640988000_init.go	2026-05-01 11:49:39
++++ pocketbase/migrations/1640988000_init.go	2026-04-29 06:25:06
+@@ -34,26 +34,7 @@
+ 
+ 		// -----------------------------------------------------------
+ 
+-		_, execerr := txApp.DB().NewQuery(`
+-			CREATE TABLE {{_collections}} (
+-				[[id]]         TEXT PRIMARY KEY DEFAULT ('r'||lower(hex(randomblob(7)))) NOT NULL,
+-				[[system]]     BOOLEAN DEFAULT FALSE NOT NULL,
+-				[[type]]       TEXT DEFAULT "base" NOT NULL,
+-				[[name]]       TEXT UNIQUE NOT NULL,
+-				[[fields]]     JSON DEFAULT "[]" NOT NULL,
+-				[[indexes]]    JSON DEFAULT "[]" NOT NULL,
+-				[[listRule]]   TEXT DEFAULT NULL,
+-				[[viewRule]]   TEXT DEFAULT NULL,
+-				[[createRule]] TEXT DEFAULT NULL,
+-				[[updateRule]] TEXT DEFAULT NULL,
+-				[[deleteRule]] TEXT DEFAULT NULL,
+-				[[options]]    JSON DEFAULT "{}" NOT NULL,
+-				[[created]]    TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL,
+-				[[updated]]    TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL
+-			);
+-
+-			CREATE INDEX IF NOT EXISTS idx__collections_type on {{_collections}} ([[type]]);
+-		`).Execute()
++		_, execerr := txApp.DB().NewQuery(initCollectionsSQL()).Execute()
+ 		if execerr != nil {
+ 			return fmt.Errorf("_collections exec error: %w", execerr)
+ 		}
+@@ -105,15 +86,7 @@
+ }
+ 
+ func createParamsTable(txApp core.App) error {
+-	_, execErr := txApp.DB().NewQuery(`
+-		CREATE TABLE {{_params}} (
+-			[[id]]      TEXT PRIMARY KEY DEFAULT ('r'||lower(hex(randomblob(7)))) NOT NULL,
+-			[[value]]   JSON DEFAULT NULL,
+-			[[created]] TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL,
+-			[[updated]] TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%fZ')) NOT NULL
+-		);
+-	`).Execute()
+-
++	_, execErr := txApp.DB().NewQuery(initParamsSQL()).Execute()
+ 	return execErr
+ }
+ 

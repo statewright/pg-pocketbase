@@ -1,0 +1,14 @@
+--- /tmp/pb_upstream/apis/record_crud.go	2026-05-01 11:49:39
++++ pocketbase/apis/record_crud.go	2026-04-30 02:05:14
+@@ -79,9 +79,9 @@
+ 
+ 	searchProvider := search.NewProvider(fieldsResolver).Query(query)
+ 
+-	// use rowid when available to minimize the need of a covering index with the "id" field
++	// use an efficient count column when available
+ 	if !collection.IsView() {
+-		searchProvider.CountCol("_rowid_")
++		searchProvider.CountCol(defaultCountCol)
+ 	}
+ 
+ 	records := []*core.Record{}

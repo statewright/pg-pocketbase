@@ -1,0 +1,26 @@
+--- /tmp/pb_upstream/core/collection_validate.go	2026-05-01 11:49:39
++++ pocketbase/core/collection_validate.go	2026-04-29 18:09:21
+@@ -8,7 +8,6 @@
+ 	"strings"
+ 
+ 	validation "github.com/go-ozzo/ozzo-validation/v4"
+-	"github.com/pocketbase/dbx"
+ 	"github.com/pocketbase/pocketbase/core/validators"
+ 	"github.com/pocketbase/pocketbase/tools/dbutils"
+ 	"github.com/pocketbase/pocketbase/tools/list"
+@@ -562,14 +561,7 @@
+ 
+ 		// ensure that the index name is not used in another collection
+ 		var usedTblName string
+-		_ = cv.app.ConcurrentDB().Select("tbl_name").
+-			From("sqlite_master").
+-			AndWhere(dbx.HashExp{"type": "index"}).
+-			AndWhere(dbx.NewExp("LOWER([[tbl_name]])!=LOWER({:oldName})", dbx.Params{"oldName": cv.original.Name})).
+-			AndWhere(dbx.NewExp("LOWER([[tbl_name]])!=LOWER({:newName})", dbx.Params{"newName": cv.new.Name})).
+-			AndWhere(dbx.NewExp("LOWER([[name]])=LOWER({:indexName})", dbx.Params{"indexName": parsed.IndexName})).
+-			Limit(1).
+-			Row(&usedTblName)
++		_ = findIndexUsedByTable(cv.app.ConcurrentDB(), cv.original.Name, cv.new.Name, parsed.IndexName, &usedTblName)
+ 		if usedTblName != "" {
+ 			return validation.Errors{
+ 				strconv.Itoa(i): validation.NewError(

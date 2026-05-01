@@ -1,0 +1,9 @@
+.reference/
+.claude/
+pocketbase/
+pb_data/
+*.db
+*.log
+.DS_Store
+.env
+.env.*
