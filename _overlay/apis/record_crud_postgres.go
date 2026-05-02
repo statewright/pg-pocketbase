@@ -65,10 +65,18 @@ func sanitizeRuleParam(v any) any {
 	case float64:
 		return strconv.FormatFloat(val, 'f', -1, 64)
 	case types.DateTime:
-		return val.String()
+		s := val.String()
+		if s == "" {
+			return nil // empty DateTime → NULL, not empty string (which fails ::timestamptz cast)
+		}
+		return s
 	case types.JSONRaw:
 		// JSONRaw is []byte; pgx cannot encode []byte for text OID.
-		return val.String()
+		s := val.String()
+		if s == "" {
+			return nil
+		}
+		return s
 	case time.Time:
 		return val.UTC().Format("2006-01-02 15:04:05.000Z")
 	case json.RawMessage:
