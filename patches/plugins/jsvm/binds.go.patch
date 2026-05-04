@@ -1,0 +1,28 @@
+--- /tmp/binds_orig.go	2026-05-04 16:34:25
++++ /Users/ben/dev/pgpocketbase/pocketbase/plugins/jsvm/binds.go	2026-05-04 16:28:52
+@@ -19,6 +19,7 @@
+ 	"time"
+ 
+ 	"github.com/dop251/goja"
++	"github.com/getsentry/sentry-go"
+ 	validation "github.com/go-ozzo/ozzo-validation/v4"
+ 	"github.com/golang-jwt/jwt/v5"
+ 	"github.com/pocketbase/dbx"
+@@ -1076,6 +1077,17 @@
+ 	jsException, ok := err.(*goja.Exception)
+ 	if !ok {
+ 		return err // no exception
++	}
++
++	// Report to Sentry if initialized
++	if hub := sentry.CurrentHub(); hub != nil && hub.Client() != nil {
++		hub.WithScope(func(scope *sentry.Scope) {
++			scope.SetTag("source", "goja")
++			scope.SetContext("goja", map[string]interface{}{
++				"value": jsException.Value().String(),
++			})
++			hub.CaptureException(err)
++		})
+ 	}
+ 
+ 	switch v := jsException.Value().Export().(type) {

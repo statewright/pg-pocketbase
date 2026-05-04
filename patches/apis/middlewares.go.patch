@@ -1,0 +1,30 @@
+--- /tmp/middlewares_orig.go	2026-05-04 16:34:25
++++ /Users/ben/dev/pgpocketbase/pocketbase/apis/middlewares.go	2026-05-04 16:28:28
+@@ -11,6 +11,7 @@
+ 	"strings"
+ 	"time"
+ 
++	"github.com/getsentry/sentry-go"
+ 	"github.com/pocketbase/pocketbase/core"
+ 	"github.com/pocketbase/pocketbase/tools/hook"
+ 	"github.com/pocketbase/pocketbase/tools/list"
+@@ -269,6 +270,19 @@
+ 
+ 				stack := make([]byte, 2<<10) // 2 KB
+ 				length := runtime.Stack(stack, true)
++
++				// Report to Sentry if initialized
++				if hub := sentry.CurrentHub(); hub != nil && hub.Client() != nil {
++					hub.WithScope(func(scope *sentry.Scope) {
++						scope.SetTag("source", "panic")
++						scope.SetRequest(e.Request)
++						scope.SetContext("panic", map[string]interface{}{
++							"stacktrace": string(stack[:length]),
++						})
++						hub.CaptureException(recoverErr)
++					})
++				}
++
+ 				err = e.InternalServerError("", fmt.Errorf("[PANIC RECOVER] %w %s", recoverErr, stack[:length]))
+ 			}()
+ 
