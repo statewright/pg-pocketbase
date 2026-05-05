@@ -1,7 +1,6 @@
 package pgpb
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"time"
@@ -43,13 +42,22 @@ func InitSentry(app *pocketbase.PocketBase) {
 		Environment:      env,
 		Release:          "pg-pocketbase@" + pocketbase.Version,
 		TracesSampleRate: 0.1,
+		Debug:            env != "production",
+		Transport:        sentry.NewHTTPSyncTransport(),
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "pgpb: sentry init failed: %v\n", err)
+		log.Printf("pgpb: sentry init failed: %v\n", err)
 		return
 	}
 
-	log.Println("pgpb: sentry initialized (env=" + env + ")")
+	// Verify the client is bound
+	hub := sentry.CurrentHub()
+	if hub == nil || hub.Client() == nil {
+		log.Println("pgpb: sentry init succeeded but hub/client is nil")
+		return
+	}
+
+	log.Printf("pgpb: sentry initialized (env=%s dsn=%s...%s)\n", env, dsn[:30], dsn[len(dsn)-5:])
 
 	// Flush on shutdown
 	app.OnTerminate().Bind(&hook.Handler[*core.TerminateEvent]{
