@@ -60,7 +60,25 @@ This starts LISTEN/NOTIFY channels that synchronize:
 - Settings changes
 - Cron job deduplication (only one instance runs each job)
 
-File storage must use S3 or equivalent shared storage -- this is a documented PocketBase requirement for multi-instance deployments regardless of database.
+### File Storage
+
+Each replica has its own local `pb_data/storage/`. Without shared storage, files uploaded to one replica are invisible to others -- leading to broken file URLs and incomplete backups.
+
+Configure S3 storage in PocketBase admin under Settings > S3 (and Backups > S3). [Trove](https://github.com/statewright/trove) is a lightweight, MIT-licensed S3-compatible object store that pairs well with pg-pocketbase -- it uses PostgreSQL for metadata and content-addressed filesystem storage, and can share the same PostgreSQL instance (tables are prefixed `trove_` to avoid conflicts).
+
+```yaml
+# docker-compose.yml (alongside pg-pocketbase)
+services:
+  trove:
+    image: ghcr.io/statewright/trove:latest
+    environment:
+      TROVE_POSTGRES_URL: postgres://user:pass@postgres:5432/trove?sslmode=disable
+      TROVE_DATA_DIR: /data
+    volumes:
+      - trove-data:/data
+```
+
+Then configure PocketBase: endpoint `http://trove:9000`, path-style URLs enabled, with the root access/secret keys printed to trove's stderr on first run.
 
 ## Configuration
 
