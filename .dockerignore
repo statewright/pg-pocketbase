@@ -1,0 +1,7 @@
+.reference/
+.claude/
+.git/
+pb_data/
+*.db
+*.log
+pg-pocketbase

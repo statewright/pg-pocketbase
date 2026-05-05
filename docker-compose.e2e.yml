@@ -1,0 +1,65 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: pgpb
+      POSTGRES_PASSWORD: pgpb
+      POSTGRES_DB: pgpb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pgpb"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  # Init job: create trove database if it doesn't exist
+  postgres-init:
+    image: postgres:17-alpine
+    entrypoint: >
+      sh -c "until pg_isready -h postgres -U pgpb; do sleep 1; done &&
+      psql -h postgres -U pgpb -tc \"SELECT 1 FROM pg_database WHERE datname = 'trove'\" |
+      grep -q 1 || psql -h postgres -U pgpb -c 'CREATE DATABASE trove'"
+    environment:
+      PGPASSWORD: pgpb
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  trove:
+    build:
+      context: ../trove
+    ports:
+      - "9000:9000"
+    environment:
+      TROVE_LISTEN: ":9000"
+      TROVE_POSTGRES_URL: postgres://pgpb:pgpb@postgres:5432/trove?sslmode=disable
+      TROVE_DATA_DIR: /data
+      TROVE_ROOT_ACCESS_KEY: trove-access-key
+      TROVE_ROOT_SECRET_KEY: trove-secret-key-for-testing-only
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+
+  pocketbase:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    ports:
+      - "8090:8090"
+    environment:
+      POSTGRES_URL: postgres://pgpb:pgpb@postgres:5432?sslmode=disable
+      PB_S3_ENABLED: "true"
+      PB_S3_ENDPOINT: http://trove:9000
+      PB_S3_BUCKET: pb-files
+      PB_S3_REGION: us-east-1
+      PB_S3_ACCESS_KEY: trove-access-key
+      PB_S3_SECRET: trove-secret-key-for-testing-only
+      PB_S3_FORCE_PATH_STYLE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      trove:
+        condition: service_started

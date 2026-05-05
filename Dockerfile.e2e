@@ -1,0 +1,10 @@
+FROM golang:1.25-alpine AS builder
+WORKDIR /src
+COPY . .
+RUN CGO_ENABLED=0 go build -tags "postgres,no_default_driver" -ldflags="-s -w" -o /pocketbase ./examples/basic/
+
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /pocketbase /usr/local/bin/pocketbase
+EXPOSE 8090
+ENTRYPOINT ["pocketbase", "serve", "--http=0.0.0.0:8090"]

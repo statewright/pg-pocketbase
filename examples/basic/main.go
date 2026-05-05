@@ -26,6 +26,9 @@ func main() {
 	// Initialize Sentry/GlitchTip error reporting (reads SENTRY_DSN from env)
 	pgpb.InitSentry(app)
 
+	// Auto-configure S3 storage from PB_S3_* / PB_BACKUPS_S3_* env vars
+	pgpb.BindS3AutoConfig(app)
+
 	// ---------------------------------------------------------------
 	// Plugin flags
 	// ---------------------------------------------------------------

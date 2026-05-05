@@ -150,12 +150,13 @@ func TestBridge_CacheInvalidationTriggerFiresOnUpdate(t *testing.T) {
 		dropTestDB(t, pgURL, dbName)
 	}()
 
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS "_collections" (
-		"id" TEXT PRIMARY KEY,
-		"name" TEXT NOT NULL DEFAULT ''
-	)`)
-	if err != nil {
-		t.Fatalf("failed to create _collections: %v", err)
+	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS "_collections" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE IF NOT EXISTS "_settings" ("id" TEXT PRIMARY KEY, "value" JSONB NOT NULL DEFAULT '{}')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("failed to create table: %v", err)
+		}
 	}
 
 	bridge := &RealtimeBridge{channelID: genChannelID(), db: db}
@@ -164,8 +165,7 @@ func TestBridge_CacheInvalidationTriggerFiresOnUpdate(t *testing.T) {
 	}
 
 	// Pre-insert a row
-	_, err = db.Exec(`INSERT INTO "_collections" ("id", "name") VALUES ('c1', 'posts')`)
-	if err != nil {
+	if _, err := db.Exec(`INSERT INTO "_collections" ("id", "name") VALUES ('c1', 'posts')`); err != nil {
 		t.Fatalf("INSERT failed: %v", err)
 	}
 
@@ -180,8 +180,7 @@ func TestBridge_CacheInvalidationTriggerFiresOnUpdate(t *testing.T) {
 	}
 	defer conn.Close(ctx)
 
-	_, err = conn.Exec(ctx, "LISTEN "+cacheInvalidateChannel)
-	if err != nil {
+	if _, err := conn.Exec(ctx, "LISTEN "+cacheInvalidateChannel); err != nil {
 		t.Fatalf("LISTEN failed: %v", err)
 	}
 
@@ -210,12 +209,13 @@ func TestBridge_CacheInvalidationTriggerFiresOnDelete(t *testing.T) {
 		dropTestDB(t, pgURL, dbName)
 	}()
 
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS "_settings" (
-		"id" TEXT PRIMARY KEY,
-		"value" JSONB NOT NULL DEFAULT '{}'
-	)`)
-	if err != nil {
-		t.Fatalf("failed to create _settings: %v", err)
+	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS "_collections" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE IF NOT EXISTS "_settings" ("id" TEXT PRIMARY KEY, "value" JSONB NOT NULL DEFAULT '{}')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("failed to create table: %v", err)
+		}
 	}
 
 	bridge := &RealtimeBridge{channelID: genChannelID(), db: db}
@@ -224,8 +224,7 @@ func TestBridge_CacheInvalidationTriggerFiresOnDelete(t *testing.T) {
 	}
 
 	// Pre-insert
-	_, err = db.Exec(`INSERT INTO "_settings" ("id", "value") VALUES ('s1', '{"smtp":true}')`)
-	if err != nil {
+	if _, err := db.Exec(`INSERT INTO "_settings" ("id", "value") VALUES ('s1', '{"smtp":true}')`); err != nil {
 		t.Fatalf("INSERT failed: %v", err)
 	}
 
@@ -240,8 +239,7 @@ func TestBridge_CacheInvalidationTriggerFiresOnDelete(t *testing.T) {
 	}
 	defer conn.Close(ctx)
 
-	_, err = conn.Exec(ctx, "LISTEN "+cacheInvalidateChannel)
-	if err != nil {
+	if _, err := conn.Exec(ctx, "LISTEN "+cacheInvalidateChannel); err != nil {
 		t.Fatalf("LISTEN failed: %v", err)
 	}
 
@@ -270,13 +268,13 @@ func TestBridge_ListenCacheInvalidation(t *testing.T) {
 		dropTestDB(t, pgURL, dbName)
 	}()
 
-	// Create target tables and triggers
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS "_collections" (
-		"id" TEXT PRIMARY KEY,
-		"name" TEXT NOT NULL DEFAULT ''
-	)`)
-	if err != nil {
-		t.Fatalf("failed to create _collections: %v", err)
+	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS "_collections" ("id" TEXT PRIMARY KEY, "name" TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE IF NOT EXISTS "_settings" ("id" TEXT PRIMARY KEY, "value" JSONB NOT NULL DEFAULT '{}')`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("failed to create table: %v", err)
+		}
 	}
 
 	connURL := mustParseConnURL(pgURL)
@@ -309,8 +307,7 @@ func TestBridge_ListenCacheInvalidation(t *testing.T) {
 	<-ready
 
 	// Trigger a change
-	_, err = db.ExecContext(ctx, `INSERT INTO "_collections" ("id", "name") VALUES ('x1', 'test')`)
-	if err != nil {
+	if _, err := db.ExecContext(ctx, `INSERT INTO "_collections" ("id", "name") VALUES ('x1', 'test')`); err != nil {
 		t.Fatalf("INSERT failed: %v", err)
 	}
 
