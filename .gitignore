@@ -7,3 +7,4 @@ pb_data/
 .DS_Store
 .env
 .env.*
+pg-pocketbase
