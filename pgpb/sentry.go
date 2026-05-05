@@ -43,7 +43,6 @@ func InitSentry(app *pocketbase.PocketBase) {
 		Release:          "pg-pocketbase@" + pocketbase.Version,
 		TracesSampleRate: 0.1,
 		Debug:            env != "production",
-		Transport:        sentry.NewHTTPSyncTransport(),
 	})
 	if err != nil {
 		log.Printf("pgpb: sentry init failed: %v\n", err)
