@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	sharedBridgeChannel = "pb_bridge_shared"
+	sharedBridgeChannel      = "pb_bridge_shared"
+	cacheInvalidateChannel   = "cache_invalidate"
 
 	heartbeatInterval = 30 * time.Second
 	heartbeatTTL      = 40 * time.Second
@@ -342,6 +343,47 @@ func genChannelID() string {
 
 	suffix := fmt.Sprintf("%05d", rand.Int64N(100000))
 	return "c_" + string(normalized) + "_" + suffix
+}
+
+// createCacheInvalidationTriggers installs PostgreSQL triggers on _collections
+// and _settings that fire NOTIFY on any change. This provides database-level
+// cache invalidation that catches all write paths (API, migrations, direct SQL)
+// regardless of whether the application-level hook fires.
+func (b *RealtimeBridge) createCacheInvalidationTriggers() error {
+	stmts := []string{
+		`CREATE OR REPLACE FUNCTION _pgpb_notify_cache_invalidate() RETURNS trigger AS $$
+		BEGIN
+			PERFORM pg_notify('cache_invalidate', TG_TABLE_NAME);
+			RETURN NULL;
+		END;
+		$$ LANGUAGE plpgsql`,
+
+		`DROP TRIGGER IF EXISTS _pgpb_cache_invalidate ON "_collections"`,
+		`CREATE TRIGGER _pgpb_cache_invalidate
+			AFTER INSERT OR UPDATE OR DELETE ON "_collections"
+			FOR EACH STATEMENT EXECUTE FUNCTION _pgpb_notify_cache_invalidate()`,
+
+		`DROP TRIGGER IF EXISTS _pgpb_cache_invalidate ON "_settings"`,
+		`CREATE TRIGGER _pgpb_cache_invalidate
+			AFTER INSERT OR UPDATE OR DELETE ON "_settings"
+			FOR EACH STATEMENT EXECUTE FUNCTION _pgpb_notify_cache_invalidate()`,
+	}
+
+	for _, stmt := range stmts {
+		if _, err := b.db.Exec(stmt); err != nil {
+			return fmt.Errorf("pgpb bridge: createCacheInvalidationTriggers: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// listenCacheInvalidation listens on the cache_invalidate channel for
+// trigger-fired notifications. Calls onReady once LISTEN is established.
+func (b *RealtimeBridge) listenCacheInvalidation(ctx context.Context, onReady func(), handler func(tableName string)) {
+	b.listenLoop(ctx, cacheInvalidateChannel, onReady, func(n *pgconn.Notification) {
+		handler(n.Payload)
+	})
 }
 
 func mustJSON(v any) json.RawMessage {

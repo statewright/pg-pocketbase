@@ -154,6 +154,14 @@ func bindBridge(app *pocketbase.PocketBase, connString string, cfg pgConfig) {
 				return fmt.Errorf("pgpb bridge: %w", err)
 			}
 
+			// Install triggers on _collections and _settings for database-level
+			// cache invalidation (catches migrations, direct SQL, all write paths).
+			if err := bridge.createCacheInvalidationTriggers(); err != nil {
+				slog.Warn("pgpb bridge: failed to create cache invalidation triggers (non-fatal)",
+					slog.String("error", err.Error()),
+				)
+			}
+
 			bridge.broker = app.SubscriptionsBroker()
 
 			// Start heartbeat
@@ -175,9 +183,31 @@ func bindBridge(app *pocketbase.PocketBase, connString string, cfg pgConfig) {
 				handleDirectMessage(app, bridge, dm)
 			})
 
+			// Listen for trigger-based cache invalidation (database-level safety net)
+			cacheReady := make(chan struct{})
+			go bridge.listenCacheInvalidation(ctx, func() {
+				close(cacheReady)
+			}, func(tableName string) {
+				switch tableName {
+				case "_collections":
+					if err := app.ReloadCachedCollections(); err != nil {
+						slog.Warn("pgpb bridge: trigger-based collection reload failed",
+							slog.String("error", err.Error()),
+						)
+					}
+				case "_settings":
+					if err := app.ReloadSettings(); err != nil {
+						slog.Warn("pgpb bridge: trigger-based settings reload failed",
+							slog.String("error", err.Error()),
+						)
+					}
+				}
+			})
+
 			// Wait for listeners to be ready before proceeding
 			<-sharedReady
 			<-directReady
+			<-cacheReady
 
 			slog.Info("pgpb bridge: started",
 				slog.String("channelID", bridge.channelID),
