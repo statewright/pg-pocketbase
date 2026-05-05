@@ -2,6 +2,7 @@ package pgpb
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"time"
 
@@ -48,7 +49,7 @@ func InitSentry(app *pocketbase.PocketBase) {
 		return
 	}
 
-	fmt.Println("pgpb: sentry initialized (env=" + env + ")")
+	log.Println("pgpb: sentry initialized (env=" + env + ")")
 
 	// Flush on shutdown
 	app.OnTerminate().Bind(&hook.Handler[*core.TerminateEvent]{
