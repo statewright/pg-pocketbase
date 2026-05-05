@@ -23,6 +23,9 @@ func main() {
 
 	app := pgpb.NewWithPostgres(pgURL)
 
+	// Initialize Sentry/GlitchTip error reporting (reads SENTRY_DSN from env)
+	pgpb.InitSentry(app)
+
 	// ---------------------------------------------------------------
 	// Plugin flags
 	// ---------------------------------------------------------------
