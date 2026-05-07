@@ -113,11 +113,85 @@ func NewWithPostgres(connectionString string, opts ...Option) *pocketbase.Pocket
 		Priority: -999, // run before everything else
 	})
 
+	// Backup advisory lock (prevents concurrent backups across replicas)
+	bindBackupLock(app, connectionString, cfg)
+
+	// PG-backed temp KV store (for cross-replica state like Apple OAuth name handoff)
+	bindTempKV(app, connectionString, cfg)
+
 	if cfg.enableBridge {
 		bindBridge(app, connectionString, cfg)
 	}
 
 	return app
+}
+
+// bindBackupLock opens a small connection pool for advisory lock operations
+// and registers backup/restore hooks.
+func bindBackupLock(app *pocketbase.PocketBase, connString string, cfg pgConfig) {
+	u, err := url.Parse(connString)
+	if err != nil {
+		return
+	}
+	u.Path = "/" + cfg.dataDBName
+
+	app.OnServe().Bind(&hook.Handler[*core.ServeEvent]{
+		Id: "pgpb_backup_lock_init",
+		Func: func(e *core.ServeEvent) error {
+			lockDB, err := sql.Open("pgx", u.String())
+			if err != nil {
+				slog.Warn("pgpb: failed to open backup lock db (non-fatal)",
+					slog.String("error", err.Error()),
+				)
+				return e.Next()
+			}
+			lockDB.SetMaxOpenConns(2)
+			lockDB.SetMaxIdleConns(1)
+
+			BindBackupLock(app, lockDB)
+
+			// Clean up on terminate
+			app.OnTerminate().Bind(&hook.Handler[*core.TerminateEvent]{
+				Id: "pgpb_backup_lock_close",
+				Func: func(e *core.TerminateEvent) error {
+					lockDB.Close()
+					return e.Next()
+				},
+			})
+
+			return e.Next()
+		},
+		Priority: 996, // before bridge (998)
+	})
+}
+
+// bindTempKV initializes the PG-backed temp KV store for cross-replica state.
+func bindTempKV(app *pocketbase.PocketBase, connString string, cfg pgConfig) {
+	u, err := url.Parse(connString)
+	if err != nil {
+		return
+	}
+	u.Path = "/" + cfg.dataDBName
+
+	kvDB, err := sql.Open("pgx", u.String())
+	if err != nil {
+		slog.Warn("pgpb: failed to open temp KV db (non-fatal)",
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+	kvDB.SetMaxOpenConns(3)
+	kvDB.SetMaxIdleConns(1)
+
+	BindTempKV(app, kvDB)
+
+	app.OnTerminate().Bind(&hook.Handler[*core.TerminateEvent]{
+		Id: "pgpb_tempkv_close",
+		Func: func(e *core.TerminateEvent) error {
+			kvDB.Close()
+			return e.Next()
+		},
+	})
 }
 
 // bindBridge wires the multi-instance realtime bridge into PocketBase's lifecycle.
@@ -283,6 +357,24 @@ func bindBridge(app *pocketbase.PocketBase, connString string, cfg pgConfig) {
 	app.OnCollectionCreateRequest().Bind(collectionChangeHandler)
 	app.OnCollectionUpdateRequest().Bind(collectionChangeHandler)
 	app.OnCollectionDeleteRequest().Bind(collectionChangeHandler)
+
+	// On collection import: broadcast via bridge
+	app.OnCollectionsImportRequest().Bind(&hook.Handler[*core.CollectionsImportRequestEvent]{
+		Id: "pgpb_bridge_collection_import",
+		Func: func(e *core.CollectionsImportRequestEvent) error {
+			err := e.Next()
+			if err != nil {
+				return err
+			}
+			if bcErr := bridge.broadcastCollectionChanged(e.Request.Context()); bcErr != nil {
+				slog.Warn("pgpb bridge: failed to broadcast collection import",
+					slog.String("error", bcErr.Error()),
+				)
+			}
+			return nil
+		},
+		Priority: 999,
+	})
 
 	// On settings change: broadcast via bridge
 	app.OnSettingsUpdateRequest().Bind(&hook.Handler[*core.SettingsUpdateRequestEvent]{
