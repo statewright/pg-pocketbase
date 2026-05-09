@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pgpb
+          POSTGRES_PASSWORD: pgpb
+          POSTGRES_DB: pgpb
+        options: >-
+          --health-cmd "pg_isready -U pgpb"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Setup PocketBase overlay
+        run: make setup
+
+      - name: Run PostgreSQL tests
+        env:
+          PG_TEST_URL: postgres://pgpb:pgpb@localhost:5432?sslmode=disable
+        run: go test -tags postgres -count=1 -race -v ./pgpb/
+
+      - name: Build
+        run: |
+          CGO_ENABLED=0 go build -tags "postgres,no_default_driver" -o pg-pocketbase ./examples/basic/

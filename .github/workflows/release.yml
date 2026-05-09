@@ -2,14 +2,42 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ["v*"]
 
 permissions:
   contents: write
 
 jobs:
-  release:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pgpb
+          POSTGRES_PASSWORD: pgpb
+          POSTGRES_DB: pgpb
+        options: >-
+          --health-cmd "pg_isready -U pgpb"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Setup PocketBase overlay
+        run: make setup
+      - name: Run tests
+        env:
+          PG_TEST_URL: postgres://pgpb:pgpb@localhost:5432?sslmode=disable
+        run: go test -tags postgres -count=1 -race ./pgpb/
+
+  binaries:
+    needs: test
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -22,43 +50,36 @@ jobs:
             goarch: amd64
           - goos: darwin
             goarch: arm64
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-
       - name: Setup PocketBase overlay
         run: make setup
-
       - name: Build
         env:
+          CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
         run: |
-          BINARY="pg-pocketbase_${GOOS}_${GOARCH}"
-          go build -tags "postgres,no_default_driver" -ldflags="-s -w" -o "${BINARY}" ./examples/basic/
-          zip "${BINARY}.zip" "${BINARY}"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+          go build -tags "postgres,no_default_driver" \
+            -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
+            -o pg-pocketbase-${{ matrix.goos }}-${{ matrix.goarch }} ./examples/basic/
+      - uses: actions/upload-artifact@v4
         with:
-          name: pg-pocketbase_${{ matrix.goos }}_${{ matrix.goarch }}
-          path: "*.zip"
+          name: pg-pocketbase-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: pg-pocketbase-${{ matrix.goos }}-${{ matrix.goarch }}
 
-  publish:
-    needs: release
+  release:
+    needs: binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
-
-      - name: Create release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: "*.zip"
           generate_release_notes: true
+          files: pg-pocketbase-*
