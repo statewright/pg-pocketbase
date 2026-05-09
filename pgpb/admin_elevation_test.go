@@ -53,7 +53,7 @@ func TestIsAllowed(t *testing.T) {
 
 func TestSuperuserEmail(t *testing.T) {
 	email := superuserEmail("abc123")
-	if email != "pgpb_abc123@internal" {
-		t.Fatalf("expected pgpb_abc123@internal, got %s", email)
+	if email != "pgpb_abc123@internal.localhost" {
+		t.Fatalf("expected pgpb_abc123@internal.localhost, got %s", email)
 	}
 }

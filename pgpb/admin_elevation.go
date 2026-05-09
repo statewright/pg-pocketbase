@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -109,7 +110,7 @@ func BindAdminElevation(app *pocketbase.PocketBase, db *sql.DB) {
 	})
 }
 
-func handleElevation(app *pocketbase.PocketBase, db *sql.DB, e *core.RequestEvent, user *core.Record, cacheMu *sync.Mutex, cache map[string]*cachedElevation) error {
+func handleElevation(app core.App, db *sql.DB, e *core.RequestEvent, user *core.Record, cacheMu *sync.Mutex, cache map[string]*cachedElevation) error {
 	// Check cooldown cache to avoid repeated bcrypt hashing
 	cacheMu.Lock()
 	if cached, ok := cache[user.Id]; ok && time.Now().Before(cached.expiresAt) {
@@ -177,7 +178,7 @@ window.location.replace("/_/");
 	return e.HTML(http.StatusOK, html)
 }
 
-func elevateToSuperuser(app *pocketbase.PocketBase, db *sql.DB, user *core.Record) (*core.Record, string, error) {
+func elevateToSuperuser(app core.App, db *sql.DB, user *core.Record) (*core.Record, string, error) {
 	mappedEmail := superuserEmail(user.Id)
 
 	var superuserID string
@@ -225,7 +226,7 @@ func elevateToSuperuser(app *pocketbase.PocketBase, db *sql.DB, user *core.Recor
 	return superuser, token, nil
 }
 
-func createMappedSuperuser(app *pocketbase.PocketBase, db *sql.DB, user *core.Record, mappedEmail string) (*core.Record, error) {
+func createMappedSuperuser(app core.App, db *sql.DB, user *core.Record, mappedEmail string) (*core.Record, error) {
 	collection, err := app.FindCollectionByNameOrId(core.CollectionNameSuperusers)
 	if err != nil {
 		return nil, fmt.Errorf("find superusers collection: %w", err)
@@ -298,7 +299,7 @@ func isAllowed(email string, allowlist []string) bool {
 }
 
 func superuserEmail(userID string) string {
-	return "pgpb_" + userID + "@internal"
+	return "pgpb_" + userID + "@internal.localhost"
 }
 
 func extractAuthToken(r *http.Request) string {
@@ -313,6 +314,10 @@ func extractAuthToken(r *http.Request) string {
 	for _, name := range []string{"pb_auth"} {
 		if c, err := r.Cookie(name); err == nil && c.Value != "" {
 			val := c.Value
+			// PB JS SDK URL-encodes the JSON cookie value
+			if decoded, decErr := url.QueryUnescape(val); decErr == nil {
+				val = decoded
+			}
 			if strings.HasPrefix(val, "{") {
 				var data struct {
 					Token string `json:"token"`
