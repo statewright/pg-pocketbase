@@ -119,6 +119,9 @@ func NewWithPostgres(connectionString string, opts ...Option) *pocketbase.Pocket
 	// PG-backed temp KV store (for cross-replica state like Apple OAuth name handoff)
 	bindTempKV(app, connectionString, cfg)
 
+	// Admin auto-elevation (reads PGPB_ADMIN_EMAILS env var)
+	bindAdminElevation(app, connectionString, cfg)
+
 	if cfg.enableBridge {
 		bindBridge(app, connectionString, cfg)
 	}
@@ -189,6 +192,35 @@ func bindTempKV(app *pocketbase.PocketBase, connString string, cfg pgConfig) {
 		Id: "pgpb_tempkv_close",
 		Func: func(e *core.TerminateEvent) error {
 			kvDB.Close()
+			return e.Next()
+		},
+	})
+}
+
+// bindAdminElevation sets up the admin auto-elevation middleware.
+func bindAdminElevation(app *pocketbase.PocketBase, connString string, cfg pgConfig) {
+	u, err := url.Parse(connString)
+	if err != nil {
+		return
+	}
+	u.Path = "/" + cfg.dataDBName
+
+	elevDB, err := sql.Open("pgx", u.String())
+	if err != nil {
+		slog.Warn("pgpb: failed to open admin elevation db (non-fatal)",
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+	elevDB.SetMaxOpenConns(3)
+	elevDB.SetMaxIdleConns(1)
+
+	BindAdminElevation(app, elevDB)
+
+	app.OnTerminate().Bind(&hook.Handler[*core.TerminateEvent]{
+		Id: "pgpb_admin_elevation_close",
+		Func: func(e *core.TerminateEvent) error {
+			elevDB.Close()
 			return e.Next()
 		},
 	})
