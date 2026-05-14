@@ -56,9 +56,21 @@ app := pgpb.NewWithPostgres(os.Getenv("POSTGRES_URL"),
 
 This starts LISTEN/NOTIFY channels that synchronize:
 - SSE client subscriptions across instances
-- Collection schema cache invalidation
+- Collection schema cache invalidation (including bulk imports)
 - Settings changes
 - Cron job deduplication (only one instance runs each job)
+
+### Cache Invalidation
+
+PostgreSQL triggers on `_collections` and `_settings` tables fire NOTIFY on any change, providing database-level cache invalidation that catches all write paths -- API requests, migrations, direct SQL. This is a safety net on top of the application-level hook broadcasts.
+
+### Backup Coordination
+
+Backup and restore operations are protected by PostgreSQL advisory locks across replicas. Only one replica can run a backup at a time, preventing concurrent backup corruption.
+
+### Apple OAuth Name Handoff
+
+Apple sends the user's name only on the OAuth redirect, which may hit a different replica than the subsequent auth callback. pg-pocketbase stores this temporary state in a PostgreSQL table (`_pgpb_temp_kv`) with a 1-minute TTL, so any replica can read it back.
 
 ### File Storage
 
@@ -80,6 +92,37 @@ services:
 
 Then configure PocketBase: endpoint `http://trove:9000`, path-style URLs enabled, with the root access/secret keys printed to trove's stderr on first run.
 
+### S3 Auto-Configuration
+
+Instead of configuring S3 through the admin dashboard, set environment variables and pg-pocketbase applies them on startup:
+
+```bash
+PB_S3_ENABLED=true
+PB_S3_ENDPOINT=http://trove:9000
+PB_S3_BUCKET=pb-files
+PB_S3_REGION=us-east-1
+PB_S3_ACCESS_KEY=your-access-key
+PB_S3_SECRET=your-secret-key
+PB_S3_FORCE_PATH_STYLE=true
+```
+
+Backup storage uses the same pattern with the `PB_BACKUPS_S3_` prefix.
+
+## Admin Auto-Elevation
+
+pg-pocketbase can automatically promote allowed users to PocketBase superusers when they visit the admin dashboard (`/_/`). No shared admin passwords, no manual superuser management.
+
+```bash
+PGPB_ADMIN_EMAILS=admin@company.com,ops@company.com
+```
+
+When an authenticated user whose email is in the allowlist visits `/_/`:
+1. A mapped superuser account is created (or its password rotated)
+2. A short-lived auth token is generated (15 minutes, non-refreshable)
+3. The user is redirected into the admin dashboard
+
+The feature is completely inert when `PGPB_ADMIN_EMAILS` is unset. Superuser passwords are random and rotate on every elevation -- they never need to be known or stored.
+
 ## Configuration
 
 ```go
@@ -93,6 +136,22 @@ app := pgpb.NewWithPostgres(connString,
 )
 ```
 
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POSTGRES_URL` | *(required)* | PostgreSQL connection string |
+| `PGPB_ADMIN_EMAILS` | *(empty)* | Comma-separated email allowlist for admin elevation |
+| `PB_S3_ENABLED` | `false` | Enable S3 file storage |
+| `PB_S3_ENDPOINT` | | S3 endpoint URL |
+| `PB_S3_BUCKET` | | S3 bucket name |
+| `PB_S3_REGION` | | S3 region |
+| `PB_S3_ACCESS_KEY` | | S3 access key |
+| `PB_S3_SECRET` | | S3 secret key |
+| `PB_S3_FORCE_PATH_STYLE` | `false` | Use path-style S3 URLs |
+| `PB_BACKUPS_S3_*` | | Same as above, for backup storage |
+| `SENTRY_DSN` | | Sentry/GlitchTip error reporting DSN |
+
 ## Architecture
 
 ```
@@ -104,21 +163,25 @@ pg-pocketbase/
     bridge.go                    # LISTEN/NOTIFY realtime bridge
     bridged_client.go            # cross-instance SSE client proxy
     cron.go                      # pg_try_advisory_lock cron dedup
+    s3config.go                  # S3 auto-configuration from env vars
+    admin_elevation.go           # admin dashboard auto-elevation
+    backup_lock.go               # cross-replica backup advisory lock
+    tempkv.go                    # PG-backed temporary key-value store
 
   pocketbase/                    # patched upstream (build-tag pairs)
     core/
-      db_table_{sqlite,postgres}.go          # schema introspection
-      base_db_init_{sqlite,postgres}.go      # pool setup, maintenance crons
-      collection_query_{sqlite,postgres}.go  # ordering (rowid vs id)
-      collection_validate_{sqlite,postgres}.go
+      db_table_{sqlite,postgres}.go
+      base_db_init_{sqlite,postgres}.go
+      collection_query_{sqlite,postgres}.go
       collection_record_table_sync_{sqlite,postgres}.go
-      ident_quote_{sqlite,postgres}.go       # ` vs "
+      ident_quote_{sqlite,postgres}.go
       ...
     tools/
-      search/filter_{sqlite,postgres}.go     # type coercion, JSON operators
-      search/sort_{sqlite,postgres}.go       # @rowid mapping
-      dbutils/json_{sqlite,postgres}.go      # json_extract vs jsonb operators
-      dbutils/index_quote_{sqlite,postgres}.go
+      search/filter_{sqlite,postgres}.go
+      search/sort_{sqlite,postgres}.go
+      dbutils/json_{sqlite,postgres}.go
+    apis/
+      oauth2_apple_name_{sqlite,postgres}.go
     migrations/
       1640988000_init_{sqlite,postgres}.go
       1640988000_aux_init_{sqlite,postgres}.go
@@ -139,6 +202,7 @@ These are auto-created in each database before migrations run:
 | `hex(bytea)` | SQLite `hex()` equivalent |
 | `randomblob(int)` | Maps to `gen_random_bytes` |
 | `json_valid(text)` | JSON validation |
+| `JSON_EXTRACT(jsonb, text)` | SQLite `JSON_EXTRACT()` for log `data.*` filters |
 | `json_query_or_null(jsonb, text)` | Safe JSON path extraction |
 | `strftime(format, time_value)` | SQLite `strftime()` compatibility |
 | `nocase` collation | Case-insensitive text comparison |
