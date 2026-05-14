@@ -142,6 +142,64 @@ func TestBootstrapFunctions(t *testing.T) {
 		}
 	})
 
+	t.Run("JSON_EXTRACT function", func(t *testing.T) {
+		// Basic scalar extraction
+		var result string
+		err := testDB.QueryRow(`SELECT "JSON_EXTRACT"('{"status": 200, "url": "/api/test"}'::jsonb, '$.status')`).Scan(&result)
+		if err != nil {
+			t.Fatalf("JSON_EXTRACT() scalar failed: %v", err)
+		}
+		if result != "200" {
+			t.Errorf("expected 200, got %q", result)
+		}
+
+		// String extraction (should be unquoted)
+		err = testDB.QueryRow(`SELECT "JSON_EXTRACT"('{"name": "hello"}'::jsonb, '$.name')`).Scan(&result)
+		if err != nil {
+			t.Fatalf("JSON_EXTRACT() string failed: %v", err)
+		}
+		if result != "hello" {
+			t.Errorf("expected hello, got %q", result)
+		}
+
+		// Nested path
+		err = testDB.QueryRow(`SELECT "JSON_EXTRACT"('{"data": {"method": "GET"}}'::jsonb, '$.data.method')`).Scan(&result)
+		if err != nil {
+			t.Fatalf("JSON_EXTRACT() nested failed: %v", err)
+		}
+		if result != "GET" {
+			t.Errorf("expected GET, got %q", result)
+		}
+
+		// Text input overload
+		err = testDB.QueryRow(`SELECT "JSON_EXTRACT"('{"key": "val"}'::text, '$.key')`).Scan(&result)
+		if err != nil {
+			t.Fatalf("JSON_EXTRACT() text overload failed: %v", err)
+		}
+		if result != "val" {
+			t.Errorf("expected val, got %q", result)
+		}
+
+		// Missing path returns NULL
+		var nullResult sql.NullString
+		err = testDB.QueryRow(`SELECT "JSON_EXTRACT"('{"a": 1}'::jsonb, '$.missing')`).Scan(&nullResult)
+		if err != nil {
+			t.Fatalf("JSON_EXTRACT() missing path failed: %v", err)
+		}
+		if nullResult.Valid {
+			t.Errorf("expected NULL for missing path, got %q", nullResult.String)
+		}
+
+		// Invalid JSON returns NULL
+		err = testDB.QueryRow(`SELECT "JSON_EXTRACT"('not json'::text, '$.key')`).Scan(&nullResult)
+		if err != nil {
+			t.Fatalf("JSON_EXTRACT() invalid json failed: %v", err)
+		}
+		if nullResult.Valid {
+			t.Errorf("expected NULL for invalid JSON, got %q", nullResult.String)
+		}
+	})
+
 	t.Run("idempotent re-run", func(t *testing.T) {
 		// Running bootstrap again should not error
 		if err := BootstrapFunctions(pgURL, dbName); err != nil {

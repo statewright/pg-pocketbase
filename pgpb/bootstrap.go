@@ -73,6 +73,37 @@ var PostgresFunctionShims = []string{
 	END;
 	$fn$ LANGUAGE plpgsql IMMUTABLE`,
 
+	// JSON_EXTRACT(jsonb, text) -> text (SQLite JSON_EXTRACT compatibility)
+	// PocketBase's SimpleFieldResolver hardcodes JSON_EXTRACT() for data.* filters
+	// (e.g., log queries with data.status = 200). This shim translates to PostgreSQL's
+	// jsonb path extraction, returning text to match SQLite's behavior.
+	`CREATE OR REPLACE FUNCTION "JSON_EXTRACT"(p_input jsonb, p_path text) RETURNS text AS $fn$
+	DECLARE
+		pg_path text[];
+		result jsonb;
+	BEGIN
+		-- Convert SQLite JSON path '$.foo.bar' to PostgreSQL path array {'foo','bar'}
+		pg_path := string_to_array(ltrim(p_path, '$.'), '.');
+		result := p_input #> pg_path;
+		-- Return unquoted text for scalars (matching SQLite JSON_EXTRACT behavior)
+		IF jsonb_typeof(result) = 'string' THEN
+			RETURN result #>> '{}';
+		END IF;
+		RETURN result::text;
+	EXCEPTION WHEN others THEN
+		RETURN NULL;
+	END;
+	$fn$ LANGUAGE plpgsql IMMUTABLE`,
+
+	// JSON_EXTRACT(text, text) -> text (overload for text columns)
+	`CREATE OR REPLACE FUNCTION "JSON_EXTRACT"(p_input text, p_path text) RETURNS text AS $fn$
+	BEGIN
+		RETURN "JSON_EXTRACT"(p_input::jsonb, p_path);
+	EXCEPTION WHEN others THEN
+		RETURN NULL;
+	END;
+	$fn$ LANGUAGE plpgsql IMMUTABLE`,
+
 	// json_query_or_null(jsonb, text) -> jsonb (safe JSON path extraction)
 	`CREATE OR REPLACE FUNCTION json_query_or_null(p_input jsonb, p_query text) RETURNS jsonb AS $fn$
 		SELECT JSON_QUERY(p_input, p_query)
