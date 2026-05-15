@@ -1,0 +1,13 @@
+--- a/tools/search/simple_field_resolver.go
++++ b/tools/search/simple_field_resolver.go
+@@ -116,10 +116,7 @@
+ 	return &ResolverResult{
+ 		NullFallback: NullFallbackDisabled,
+-		Identifier: fmt.Sprintf(
+-			"JSON_EXTRACT([[%s]], '%s')",
+-			inflector.Columnify(parts[0]),
+-			jsonPath.String(),
+-		),
++		Identifier:   jsonExtractExpr(inflector.Columnify(parts[0]), jsonPath.String()),
+ 	}, nil
+ }

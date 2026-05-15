@@ -82,26 +82,20 @@ var PostgresFunctionShims = []string{
 	// PocketBase's SimpleFieldResolver hardcodes JSON_EXTRACT() for data.* filters
 	// (e.g., log queries with data.status = 200). This shim translates to PostgreSQL's
 	// jsonb path extraction, returning text to match SQLite's behavior.
-	`CREATE OR REPLACE FUNCTION json_extract(p_input jsonb, p_path text) RETURNS text AS $fn$
+	`CREATE OR REPLACE FUNCTION json_extract(p_input jsonb, p_path text) RETURNS jsonb AS $fn$
 	DECLARE
 		pg_path text[];
-		result jsonb;
 	BEGIN
 		-- Convert SQLite JSON path '$.foo.bar' to PostgreSQL path array {'foo','bar'}
 		pg_path := string_to_array(ltrim(p_path, '$.'), '.');
-		result := p_input #> pg_path;
-		-- Return unquoted text for scalars (matching SQLite JSON_EXTRACT behavior)
-		IF jsonb_typeof(result) = 'string' THEN
-			RETURN result #>> '{}';
-		END IF;
-		RETURN result::text;
+		RETURN p_input #> pg_path;
 	EXCEPTION WHEN others THEN
 		RETURN NULL;
 	END;
 	$fn$ LANGUAGE plpgsql IMMUTABLE`,
 
-	// json_extract(json, text) -> text (overload for JSON-typed columns like _logs.data)
-	`CREATE OR REPLACE FUNCTION json_extract(p_input json, p_path text) RETURNS text AS $fn$
+	// json_extract(json, text) -> jsonb (overload for JSON-typed columns like _logs.data)
+	`CREATE OR REPLACE FUNCTION json_extract(p_input json, p_path text) RETURNS jsonb AS $fn$
 	BEGIN
 		RETURN json_extract(p_input::jsonb, p_path);
 	EXCEPTION WHEN others THEN
@@ -109,8 +103,8 @@ var PostgresFunctionShims = []string{
 	END;
 	$fn$ LANGUAGE plpgsql IMMUTABLE`,
 
-	// json_extract(text, text) -> text (overload for text columns)
-	`CREATE OR REPLACE FUNCTION json_extract(p_input text, p_path text) RETURNS text AS $fn$
+	// json_extract(text, text) -> jsonb (overload for text columns)
+	`CREATE OR REPLACE FUNCTION json_extract(p_input text, p_path text) RETURNS jsonb AS $fn$
 	BEGIN
 		RETURN json_extract(p_input::jsonb, p_path);
 	EXCEPTION WHEN others THEN

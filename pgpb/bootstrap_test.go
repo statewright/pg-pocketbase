@@ -143,55 +143,67 @@ func TestBootstrapFunctions(t *testing.T) {
 	})
 
 	t.Run("JSON_EXTRACT function", func(t *testing.T) {
-		// Basic scalar extraction
+		// Returns jsonb — numeric values are bare, strings are quoted
 		var result string
-		err := testDB.QueryRow(`SELECT JSON_EXTRACT('{"status": 200, "url": "/api/test"}'::jsonb, '$.status')`).Scan(&result)
+
+		// Numeric extraction
+		err := testDB.QueryRow(`SELECT JSON_EXTRACT('{"status": 200}'::jsonb, '$.status')::text`).Scan(&result)
 		if err != nil {
-			t.Fatalf("JSON_EXTRACT() scalar failed: %v", err)
+			t.Fatalf("JSON_EXTRACT() numeric failed: %v", err)
 		}
 		if result != "200" {
 			t.Errorf("expected 200, got %q", result)
 		}
 
-		// String extraction (should be unquoted)
-		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"name": "hello"}'::jsonb, '$.name')`).Scan(&result)
+		// String extraction (jsonb preserves quotes)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"name": "hello"}'::jsonb, '$.name')::text`).Scan(&result)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() string failed: %v", err)
 		}
-		if result != "hello" {
-			t.Errorf("expected hello, got %q", result)
+		if result != `"hello"` {
+			t.Errorf("expected %q, got %q", `"hello"`, result)
 		}
 
 		// Nested path
-		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"data": {"method": "GET"}}'::jsonb, '$.data.method')`).Scan(&result)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"data": {"method": "GET"}}'::jsonb, '$.data.method')::text`).Scan(&result)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() nested failed: %v", err)
 		}
-		if result != "GET" {
-			t.Errorf("expected GET, got %q", result)
+		if result != `"GET"` {
+			t.Errorf("expected %q, got %q", `"GET"`, result)
 		}
 
 		// JSON type overload (the _logs.data column is JSON, not JSONB)
-		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"method": "POST"}'::json, '$.method')`).Scan(&result)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"method": "POST"}'::json, '$.method')::text`).Scan(&result)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() json type overload failed: %v", err)
 		}
-		if result != "POST" {
-			t.Errorf("expected POST, got %q", result)
+		if result != `"POST"` {
+			t.Errorf("expected %q, got %q", `"POST"`, result)
 		}
 
 		// Text input overload
-		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"key": "val"}'::text, '$.key')`).Scan(&result)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"key": "val"}'::text, '$.key')::text`).Scan(&result)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() text overload failed: %v", err)
 		}
-		if result != "val" {
-			t.Errorf("expected val, got %q", result)
+		if result != `"val"` {
+			t.Errorf("expected %q, got %q", `"val"`, result)
+		}
+
+		// Comparison with numeric works (the whole point of returning jsonb)
+		var matches bool
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"status": 404}'::jsonb, '$.status')::jsonb = to_jsonb(404)`).Scan(&matches)
+		if err != nil {
+			t.Fatalf("JSON_EXTRACT() numeric comparison failed: %v", err)
+		}
+		if !matches {
+			t.Error("jsonb numeric comparison should match")
 		}
 
 		// Missing path returns NULL
 		var nullResult sql.NullString
-		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"a": 1}'::jsonb, '$.missing')`).Scan(&nullResult)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"a": 1}'::jsonb, '$.missing')::text`).Scan(&nullResult)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() missing path failed: %v", err)
 		}
@@ -200,7 +212,7 @@ func TestBootstrapFunctions(t *testing.T) {
 		}
 
 		// Invalid JSON returns NULL
-		err = testDB.QueryRow(`SELECT JSON_EXTRACT('not json'::text, '$.key')`).Scan(&nullResult)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('not json'::text, '$.key')::text`).Scan(&nullResult)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() invalid json failed: %v", err)
 		}
