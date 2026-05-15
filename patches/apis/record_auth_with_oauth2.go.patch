@@ -1,0 +1,13 @@
+--- pocketbase/apis/record_auth_with_oauth2.go	2026-05-15 07:38:00
++++ /tmp/oauth2_patched.go	2026-05-15 07:40:18
+@@ -101,9 +101,8 @@
+ 	// so we try to assign the [apis.oauth2SubscriptionRedirect] forwarded name.
+ 	if form.Provider == auth.NameApple && authUser.Name == "" {
+ 		nameKey := oauth2RedirectAppleNameStoreKeyPrefix + form.Code
+-		name, ok := e.App.Store().Get(nameKey).(string)
++		name, ok := retrieveAppleRedirectName(e.App, nameKey)
+ 		if ok {
+-			e.App.Store().Remove(nameKey)
+ 			authUser.Name = name
+ 		} else {
+ 			e.App.Logger().Debug("Missing or already removed Apple user's name")

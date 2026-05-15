@@ -1,6 +1,7 @@
---- a/tools/search/simple_field_resolver.go
-+++ b/tools/search/simple_field_resolver.go
-@@ -116,10 +116,7 @@
+--- pocketbase/tools/search/simple_field_resolver.go	2026-05-15 07:36:49
++++ /tmp/sfr_patched.go	2026-05-15 07:37:25
+@@ -115,10 +115,6 @@
+ 
  	return &ResolverResult{
  		NullFallback: NullFallbackDisabled,
 -		Identifier: fmt.Sprintf(
