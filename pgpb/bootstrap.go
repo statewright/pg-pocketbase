@@ -73,10 +73,14 @@ var PostgresFunctionShims = []string{
 	END;
 	$fn$ LANGUAGE plpgsql IMMUTABLE`,
 
-	// Clean up old quoted-name version (pg6 bug: "JSON_EXTRACT" was case-preserved,
-	// but PG lowercases unquoted identifiers so the function was never found)
+	// Drop all prior json_extract variants before re-creating with correct return type.
+	// pg6 used quoted "JSON_EXTRACT", pg7 returned text, pg8 returns jsonb.
+	// PG blocks return type changes on CREATE OR REPLACE, so DROP first.
 	`DROP FUNCTION IF EXISTS "JSON_EXTRACT"(jsonb, text)`,
 	`DROP FUNCTION IF EXISTS "JSON_EXTRACT"(text, text)`,
+	`DROP FUNCTION IF EXISTS json_extract(jsonb, text)`,
+	`DROP FUNCTION IF EXISTS json_extract(json, text)`,
+	`DROP FUNCTION IF EXISTS json_extract(text, text)`,
 
 	// json_extract(jsonb, text) -> text (SQLite JSON_EXTRACT compatibility)
 	// PocketBase's SimpleFieldResolver hardcodes JSON_EXTRACT() for data.* filters
