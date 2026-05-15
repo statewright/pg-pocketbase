@@ -145,7 +145,7 @@ func TestBootstrapFunctions(t *testing.T) {
 	t.Run("JSON_EXTRACT function", func(t *testing.T) {
 		// Basic scalar extraction
 		var result string
-		err := testDB.QueryRow(`SELECT "JSON_EXTRACT"('{"status": 200, "url": "/api/test"}'::jsonb, '$.status')`).Scan(&result)
+		err := testDB.QueryRow(`SELECT JSON_EXTRACT('{"status": 200, "url": "/api/test"}'::jsonb, '$.status')`).Scan(&result)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() scalar failed: %v", err)
 		}
@@ -154,7 +154,7 @@ func TestBootstrapFunctions(t *testing.T) {
 		}
 
 		// String extraction (should be unquoted)
-		err = testDB.QueryRow(`SELECT "JSON_EXTRACT"('{"name": "hello"}'::jsonb, '$.name')`).Scan(&result)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"name": "hello"}'::jsonb, '$.name')`).Scan(&result)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() string failed: %v", err)
 		}
@@ -163,7 +163,7 @@ func TestBootstrapFunctions(t *testing.T) {
 		}
 
 		// Nested path
-		err = testDB.QueryRow(`SELECT "JSON_EXTRACT"('{"data": {"method": "GET"}}'::jsonb, '$.data.method')`).Scan(&result)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"data": {"method": "GET"}}'::jsonb, '$.data.method')`).Scan(&result)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() nested failed: %v", err)
 		}
@@ -172,7 +172,7 @@ func TestBootstrapFunctions(t *testing.T) {
 		}
 
 		// Text input overload
-		err = testDB.QueryRow(`SELECT "JSON_EXTRACT"('{"key": "val"}'::text, '$.key')`).Scan(&result)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"key": "val"}'::text, '$.key')`).Scan(&result)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() text overload failed: %v", err)
 		}
@@ -182,7 +182,7 @@ func TestBootstrapFunctions(t *testing.T) {
 
 		// Missing path returns NULL
 		var nullResult sql.NullString
-		err = testDB.QueryRow(`SELECT "JSON_EXTRACT"('{"a": 1}'::jsonb, '$.missing')`).Scan(&nullResult)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"a": 1}'::jsonb, '$.missing')`).Scan(&nullResult)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() missing path failed: %v", err)
 		}
@@ -191,7 +191,7 @@ func TestBootstrapFunctions(t *testing.T) {
 		}
 
 		// Invalid JSON returns NULL
-		err = testDB.QueryRow(`SELECT "JSON_EXTRACT"('not json'::text, '$.key')`).Scan(&nullResult)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('not json'::text, '$.key')`).Scan(&nullResult)
 		if err != nil {
 			t.Fatalf("JSON_EXTRACT() invalid json failed: %v", err)
 		}

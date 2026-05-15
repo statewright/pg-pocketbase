@@ -73,11 +73,16 @@ var PostgresFunctionShims = []string{
 	END;
 	$fn$ LANGUAGE plpgsql IMMUTABLE`,
 
-	// JSON_EXTRACT(jsonb, text) -> text (SQLite JSON_EXTRACT compatibility)
+	// Clean up old quoted-name version (pg6 bug: "JSON_EXTRACT" was case-preserved,
+	// but PG lowercases unquoted identifiers so the function was never found)
+	`DROP FUNCTION IF EXISTS "JSON_EXTRACT"(jsonb, text)`,
+	`DROP FUNCTION IF EXISTS "JSON_EXTRACT"(text, text)`,
+
+	// json_extract(jsonb, text) -> text (SQLite JSON_EXTRACT compatibility)
 	// PocketBase's SimpleFieldResolver hardcodes JSON_EXTRACT() for data.* filters
 	// (e.g., log queries with data.status = 200). This shim translates to PostgreSQL's
 	// jsonb path extraction, returning text to match SQLite's behavior.
-	`CREATE OR REPLACE FUNCTION "JSON_EXTRACT"(p_input jsonb, p_path text) RETURNS text AS $fn$
+	`CREATE OR REPLACE FUNCTION json_extract(p_input jsonb, p_path text) RETURNS text AS $fn$
 	DECLARE
 		pg_path text[];
 		result jsonb;
@@ -95,10 +100,10 @@ var PostgresFunctionShims = []string{
 	END;
 	$fn$ LANGUAGE plpgsql IMMUTABLE`,
 
-	// JSON_EXTRACT(text, text) -> text (overload for text columns)
-	`CREATE OR REPLACE FUNCTION "JSON_EXTRACT"(p_input text, p_path text) RETURNS text AS $fn$
+	// json_extract(text, text) -> text (overload for text columns)
+	`CREATE OR REPLACE FUNCTION json_extract(p_input text, p_path text) RETURNS text AS $fn$
 	BEGIN
-		RETURN "JSON_EXTRACT"(p_input::jsonb, p_path);
+		RETURN json_extract(p_input::jsonb, p_path);
 	EXCEPTION WHEN others THEN
 		RETURN NULL;
 	END;
