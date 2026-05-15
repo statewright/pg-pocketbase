@@ -171,6 +171,15 @@ func TestBootstrapFunctions(t *testing.T) {
 			t.Errorf("expected GET, got %q", result)
 		}
 
+		// JSON type overload (the _logs.data column is JSON, not JSONB)
+		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"method": "POST"}'::json, '$.method')`).Scan(&result)
+		if err != nil {
+			t.Fatalf("JSON_EXTRACT() json type overload failed: %v", err)
+		}
+		if result != "POST" {
+			t.Errorf("expected POST, got %q", result)
+		}
+
 		// Text input overload
 		err = testDB.QueryRow(`SELECT JSON_EXTRACT('{"key": "val"}'::text, '$.key')`).Scan(&result)
 		if err != nil {

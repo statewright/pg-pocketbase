@@ -100,6 +100,15 @@ var PostgresFunctionShims = []string{
 	END;
 	$fn$ LANGUAGE plpgsql IMMUTABLE`,
 
+	// json_extract(json, text) -> text (overload for JSON-typed columns like _logs.data)
+	`CREATE OR REPLACE FUNCTION json_extract(p_input json, p_path text) RETURNS text AS $fn$
+	BEGIN
+		RETURN json_extract(p_input::jsonb, p_path);
+	EXCEPTION WHEN others THEN
+		RETURN NULL;
+	END;
+	$fn$ LANGUAGE plpgsql IMMUTABLE`,
+
 	// json_extract(text, text) -> text (overload for text columns)
 	`CREATE OR REPLACE FUNCTION json_extract(p_input text, p_path text) RETURNS text AS $fn$
 	BEGIN
